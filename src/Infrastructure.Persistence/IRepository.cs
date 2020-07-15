@@ -1,26 +1,34 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 
 namespace Infrastructure.Persistence
 {
-    public interface IRepository<T> where T: class
+    public interface IRepository<T> where T : class
     {
-        Task<long> CountAsync();
-        Task<long> CountAsync(ISpecification<T> specification);
+        void Add(T entity);
+        Task AddAsync(T entity);
+        Task AddRangeAsync(IEnumerable<T> entities);
 
-        Task<bool> AnyAsync();
-        Task<bool> AnyAsync(ISpecification<T> specification);
+        void Update(T entity);
+        void UpdateRange(IEnumerable<T> entities);
 
-        Task<T> GetOneAsync(ISpecification<T> specification);
-        Task<List<T>> GetManyAsync(ISpecification<T> specification);
-        Task<List<T>> GetManyAsync(ISpecification<T> specification, ISorting<T> sorting);
+        void Delete(T entity);
+        Task DeleteAsync(ISpecification<T> spec);
 
-        Task<List<T>> GetManyAsync(ISpecification<T> specification, ISorting<T> sorting,
-            Limiting limit);
+        Task<int> CountAsync(ISpecification<T> spec);
+        Task<bool> AnyAsync(ISpecification<T> spec);
 
-        Task CreateAsync(T entity);
-        Task UpdateAsync(T entity);
+        Task<T> GetOneAsync(ISpecification<T> spec);
+        Task<List<T>> GetManyAsync(ISpecification<T> spec);
+        Task<List<T>> GetManyAsync(ISpecification<T> spec, Sorting sorting);
 
-        Task DeleteAsync(ISpecification<T> specification);
+        Task<PaginatedList<TResult>> GetPaginatedListAsync<TResult>(ISpecification<T> spec,
+            PaginationQuery parameters,
+            Func<IQueryable<T>, IQueryable<TResult>> projection,
+            Expression<Func<T, bool>>? filter = null,
+            Sorting? sorting = null);
     }
 }

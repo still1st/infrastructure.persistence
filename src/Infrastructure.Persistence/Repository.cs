@@ -1,130 +1,159 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Query;
 
 namespace Infrastructure.Persistence
 {
     public class Repository<T>: IRepository<T> where T : class
     {
-        private readonly DbContext _dbContext;
-        private readonly DbSet<T> _dbSet;
+        protected readonly DbSet<T> DbSet;
 
         public Repository(DbContext dbContext)
         {
-            _dbContext = dbContext;
-            _dbSet = dbContext.Set<T>();
+            DbSet = dbContext.Set<T>();
         }
 
-        public async Task<long> CountAsync() => await _dbSet.CountAsync();
-
-        public async Task<long> CountAsync(ISpecification<T> specification)
-            => await _dbSet.CountAsync(specification.Predicate);
-
-        public async Task<bool> AnyAsync() => await _dbSet.AnyAsync();
-
-        public async Task<bool> AnyAsync(ISpecification<T> specification)
-            => await _dbSet.AnyAsync(specification.Predicate);
-
-        public async Task<T> GetOneAsync(ISpecification<T> specification)
+        public void Add(T entity)
         {
-            var query = _dbSet.Include(specification.Includes);
+            if (entity is null)
+                throw new ArgumentNullException(nameof(entity));
 
-            return specification.AsNoTracking ?
-                await query.AsNoTracking().FirstOrDefaultAsync(specification.Predicate) :
-                await query.FirstOrDefaultAsync(specification.Predicate);
+            DbSet.Add(entity);
         }
 
-        public async Task<List<T>> GetManyAsync(ISpecification<T> specification)
-        {
-            var query = _dbSet.Include(specification.Includes);
-
-            if (specification.Predicate != null)
-                query = query.Where(specification.Predicate);
-
-            return specification.AsNoTracking ?
-                await query.AsNoTracking().ToListAsync() :
-                await query.ToListAsync();
-        }
-
-        public async Task<List<T>> GetManyAsync(ISpecification<T> specification, ISorting<T> sorting)
-        {
-            var query = _dbSet.Include(specification.Includes);
-
-            if (specification.Predicate != null)
-                query = query.Where(specification.Predicate);
-
-            query = sorting.SortingType == SortingType.Ascending ?
-                query.OrderBy(sorting.Selector) :
-                query.OrderByDescending(sorting.Selector);
-
-            return specification.AsNoTracking ?
-                await query.AsNoTracking().ToListAsync() :
-                await query.ToListAsync();
-        }
-
-        public async Task<List<T>> GetManyAsync(ISpecification<T> specification, ISorting<T> sorting,
-            Limiting limit)
-        {
-            var query = _dbSet.Include(specification.Includes);
-
-            if (specification.Predicate != null)
-                query = query.Where(specification.Predicate);
-
-            query = sorting.SortingType == SortingType.Ascending ?
-                query.OrderBy(sorting.Selector) :
-                query.OrderByDescending(sorting.Selector);
-
-            return specification.AsNoTracking ?
-                await query.Take(limit.CountOfRecords).AsNoTracking().ToListAsync() :
-                await query.Take(limit.CountOfRecords).ToListAsync();
-        }
-
-        public async Task CreateAsync(T entity)
+        public async Task AddAsync(T entity)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
 
-            await _dbSet.AddAsync(entity);
+            await DbSet.AddAsync(entity);
         }
 
-        public async Task UpdateAsync(T entity)
+        public async Task AddRangeAsync(IEnumerable<T> entities)
+        {
+            if (entities == null || !entities.Any())
+                throw new ArgumentNullException(nameof(entities));
+
+            await DbSet.AddRangeAsync(entities);
+        }
+
+        public void Update(T entity)
         {
             if (entity == null)
                 throw new ArgumentNullException(nameof(entity));
 
-            _dbContext.Entry(entity).State = EntityState.Modified;
+            DbSet.Update(entity);
         }
 
-        public async Task DeleteAsync(ISpecification<T> specification)
+        public void UpdateRange(IEnumerable<T> entities)
         {
-            var entitiesToDelete = await GetManyAsync(specification);
-            _dbSet.RemoveRange(entitiesToDelete);
+            if (entities == null || !entities.Any())
+                throw new ArgumentNullException(nameof(entities));
+
+            DbSet.UpdateRange(entities);
         }
-    }
 
-    public static class IQueryableExtensions
-    {
-        /// <summary>
-        /// Includes an array of navigation properties for the specified query.
-        /// </summary>
-        /// <typeparam name="T">The type of the entity</typeparam>
-        /// <param name="query">The query to include navigation properties for that</param>
-        /// <param name="includes">The array of navigation properties to include</param>
-        /// <returns></returns>
-        public static IQueryable<T> Include<T>(this IQueryable<T> query,
-            Func<IQueryable<T>, IIncludableQueryable<T, object>>[] includes)
-            where T : class
+        public void Delete(T entity)
         {
-            if (includes == null)
-                return query;
+            if (entity == null)
+                throw new ArgumentNullException(nameof(entity));
 
-            foreach (var include in includes)
-                query = include(query);
+            DbSet.Remove(entity);
+        }
+
+        public async Task<int> CountAsync(ISpecification<T> spec)
+            => await DbSet.CountAsync(spec.Predicate);
+
+        public async Task<bool> AnyAsync(ISpecification<T> spec)
+            => await DbSet.AnyAsync(spec.Predicate);
+
+        public async Task<T> GetOneAsync(ISpecification<T> spec)
+        {
+            var query = DbSet.Include(spec.Includes);
+
+            return spec.AsNoTracking ?
+                await query.AsNoTracking().FirstOrDefaultAsync(spec.Predicate) :
+                await query.FirstOrDefaultAsync(spec.Predicate);
+        }
+
+        public async Task<List<T>> GetManyAsync(ISpecification<T> spec)
+        {
+            var query = DbSet.Include(spec.Includes);
+
+            if (spec.Predicate != null)
+                query = query.Where(spec.Predicate);
+
+            return spec.AsNoTracking ?
+                await query.AsNoTracking().ToListAsync() :
+                await query.ToListAsync();
+        }
+
+        public async Task<List<T>> GetManyAsync(ISpecification<T> spec, Sorting sorting)
+        {
+            var query = GetQuery(
+                spec: spec,
+                filter: null,
+                sorting: sorting);
+
+            return await query.ToListAsync();
+        }
+
+        public async Task<PaginatedList<TResult>> GetPaginatedListAsync<TResult>(ISpecification<T> spec, 
+            PaginationQuery parameters,
+            Func<IQueryable<T>, IQueryable<TResult>> projection,
+            Expression<Func<T, bool>>? filter = null,
+            Sorting? sorting = null)
+        {
+            var query = GetQuery(spec, projection, filter, sorting);
+            var result = await PaginatedList<TResult>.CreateAsync(query, parameters.PageIndex, parameters.PageSize);
+            return result;
+        }
+
+        private IQueryable<TResult> GetQuery<TResult>(ISpecification<T> spec,
+            Func<IQueryable<T>, IQueryable<TResult>> projection,
+            Expression<Func<T, bool>>? filter = null,
+            Sorting? sorting = null)
+        {
+            var query = GetQuery(spec, filter, sorting);
+            return projection(query);
+        }
+
+        private IQueryable<T> GetQuery(ISpecification<T> spec,
+            Expression<Func<T, bool>>? filter = null,
+            Sorting? sorting = null)
+        {
+            var query = DbSet.Include(spec.Includes);
+
+            if (spec.Predicate != null)
+                query = query.Where(spec.Predicate);
+
+            // filter that comes from UI
+            if (filter != null)
+                query = query.Where(filter);
+
+            if (sorting != null)
+            {
+                query = sorting.SortType == SortingType.Asc
+                    ? query.OrderBy(sorting.SortBy)
+                    : query.OrderByDescending(sorting.SortBy);
+            }
+
+            if (spec.AsNoTracking)
+                query = query.AsNoTracking();
 
             return query;
+        }
+
+        public async Task DeleteAsync(ISpecification<T> spec)
+        {
+            if (spec is null)
+                throw new ArgumentNullException(nameof(spec));
+
+            var entities = await DbSet.Where(spec.Predicate).ToListAsync();
+            DbSet.RemoveRange(entities);
         }
     }
 }

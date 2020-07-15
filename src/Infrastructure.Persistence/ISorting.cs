@@ -1,25 +1,20 @@
-﻿using System;
-using System.Linq.Expressions;
-
-namespace Infrastructure.Persistence
+﻿namespace Infrastructure.Persistence
 {
-    public interface ISorting<T>
+    public class Sorting
     {
-        Expression<Func<T, object>> Selector { get; }
+        public string SortBy { get; }
+        public SortingType SortType { get; }
 
-        SortingType SortingType { get; }
+        public Sorting(string sortBy, SortingType sortType = SortingType.Asc)
+        {
+            SortBy = sortBy;
+            SortType = sortType;
+        }
     }
 
-    public class Sorting<T>: ISorting<T>
+    public enum SortingType
     {
-        public Expression<Func<T, object>> Selector { get; }
-
-        public SortingType SortingType { get; }
-
-        public Sorting(Expression<Func<T, object>> selector, SortingType sortingType = SortingType.Ascending)
-        {
-            Selector = selector ?? throw new ArgumentNullException(nameof(selector));
-            SortingType = sortingType;
-        }
+        Asc = 1,
+        Desc = 2
     }
 }
